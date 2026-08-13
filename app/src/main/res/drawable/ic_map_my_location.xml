@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 地图上"我的位置"导航箭头图标，大红色 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+
+    <!-- 外层阴影圆，让图标在白色背景上也看得见 -->
+    <path
+        android:fillColor="#33000000"
+        android:pathData="M24,46 C35.046,46 44,37.046 44,26 C44,14.954 35.046,6 24,6 C12.954,6 4,14.954 4,26 C4,37.046 12.954,46 24,46 Z" />
+
+    <!-- 深红色导航三角箭头（指向上方） -->
+    <path
+        android:fillColor="#8B0000"
+        android:pathData="M24,4 L38,40 L24,32 L10,40 Z" />
+
+    <!-- 箭头中心白点，增强辨识度 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M24,20 m-3,0 a3,3 0,1 1,6 0 a3,3 0,1 1,-6 0" />
+</vector>

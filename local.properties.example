@@ -1,0 +1,10 @@
+# 复制此文件为 local.properties，填入你自己的值。
+# local.properties 被 .gitignore 排除，不会上传到 GitHub。
+
+sdk.dir=/path/to/your/android/sdk
+
+# 高德地图 API Key
+# 去 https://lbs.amap.com/ 注册 → 控制台 → 创建应用 → 绑定包名和 SHA1 → 拿到 key
+# 包名：com.jeffery.cellularmonitor
+# SHA1：用 keytool -list -v -keystore ~/.android/debug.keystore -storepass android 取得
+AMAP_API_KEY=你的高德key

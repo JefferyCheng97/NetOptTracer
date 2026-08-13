@@ -1,0 +1,134 @@
+<resources>
+    <string name="app_name">CellularMonitor</string>
+
+    <!-- 引导态 -->
+    <string name="guide_permission_title">需要权限</string>
+    <string name="guide_permission_message">请在系统弹窗中授予"读取电话状态"与"位置"权限</string>
+    <string name="guide_location_title">需要开启定位</string>
+    <string name="guide_location_message">Android 10+ 上必须开启系统定位开关才能读取小区信息</string>
+    <string name="guide_location_action">打开定位设置</string>
+    <string name="guide_no_sim_title">未检测到 SIM 卡</string>
+    <string name="guide_no_sim_message">请插入至少一张 SIM 卡</string>
+    <string name="guide_loading">加载中…</string>
+
+    <!-- 卡槽 Tab -->
+    <string name="slot_tab_label">卡%1$d %2$s</string>
+
+    <!-- 运营商卡片 -->
+    <string name="carrier_section_title">运营商信息</string>
+    <string name="carrier_name_label">运营商</string>
+    <string name="carrier_plmn_label">MCC/MNC</string>
+    <string name="carrier_network_mode_label">网络制式</string>
+
+    <!-- NR 卡片 -->
+    <string name="nr_section_title">5G NR</string>
+    <string name="nr_nsa_hint">NSA 组网下，NR 辅载波只有信号值，小区标识空口不下发</string>
+    <string name="gnb_bits_label">gNB ID 位长</string>
+
+    <!-- LTE 卡片 -->
+    <string name="lte_section_title">LTE</string>
+
+    <!-- 小区类型（工参匹配） -->
+    <string name="cell_type_label">覆盖类型</string>
+    <string name="cell_type_from_anchor">（锚点）</string>
+
+    <!-- 邻区卡片 -->
+    <string name="neighbors_section_title">邻区</string>
+    <string name="neighbors_expand">展开 (%1$d 个)</string>
+    <string name="neighbors_collapse">收起</string>
+
+    <!-- 工参导入 -->
+    <string name="gongcan_import">导入工参</string>
+    <string name="gongcan_importing">正在解析工参…</string>
+    <string name="gongcan_import_ok_title">导入成功</string>
+    <string name="gongcan_import_ok_count">共 %1$d 个小区</string>
+    <string name="gongcan_import_ok_skipped">已跳过其他运营商的 %1$d 行</string>
+    <string name="gongcan_import_fail_title">导入失败</string>
+    <string name="gongcan_import_fail_hint">工参需要是网管导出的 Tab 分隔 TXT，含小区号、覆盖类型、CGI、基站中文名、小区名这几列。旧工参未改动。</string>
+    <string name="gongcan_cleared_title">已清除导入的工参</string>
+    <string name="gongcan_cleared_builtin">已回到内置工参，共 %1$d 个小区</string>
+    <string name="gongcan_cleared_none">当前没有可用工参，不再显示覆盖类型</string>
+    <string name="gongcan_clear">清除导入</string>
+    <string name="dialog_ok">好</string>
+
+    <!-- 小区明细卡片 -->
+    <string name="cell_detail_section_title">小区明细</string>
+    <string name="cell_detail_expand">展开</string>
+    <string name="cell_detail_collapse">收起</string>
+    <string name="cell_detail_cell_id">小区号</string>
+    <string name="cell_detail_site_name">基站名</string>
+    <string name="cell_detail_cell_name">小区名</string>
+
+    <!-- 测速卡片 -->
+    <string name="speed_section_title">网速</string>
+    <string name="speed_download">下载</string>
+    <string name="speed_upload">上传</string>
+    <string name="speed_test_peak">开始测速</string>
+    <string name="speed_stop">停止</string>
+    <string name="speed_phase_download">正在测下载…</string>
+    <string name="speed_phase_upload">正在测上传…</string>
+    <string name="speed_failed">测速失败：%1$s</string>
+
+    <!-- 位置卡片 -->
+    <string name="location_section_title">位置</string>
+    <string name="location_format_decimal">小数</string>
+    <string name="location_format_dms">度分秒</string>
+    <string name="location_accuracy">精度 ±%1$.0f 米</string>
+
+    <!-- 地图 -->
+    <string name="map_entry">地图</string>
+    <string name="map_title">地图</string>
+    <string name="map_offline_manage">离线地图</string>
+    <string name="map_locate_me">回到我的位置</string>
+    <string name="map_need_location">地图需要定位权限，请在系统设置中授予</string>
+    <string name="map_locating">定位中…</string>
+    <string name="map_locating_wait">还在定位中，请稍候</string>
+    <!-- 离线地图管理 -->
+    <string name="offline_title">离线地图</string>
+    <string name="offline_city">马鞍山市</string>
+    <string name="offline_size">%1$.1f MB</string>
+    <string name="offline_download">下载</string>
+    <string name="offline_pause">暂停</string>
+    <string name="offline_resume">继续</string>
+    <string name="offline_delete">删除</string>
+    <string name="offline_downloading">下载中 %1$d%%</string>
+    <string name="offline_paused">已暂停 %1$d%%</string>
+    <string name="offline_done">已下载</string>
+    <string name="offline_waiting">等待中</string>
+    <string name="offline_unzipping">解压中</string>
+    <string name="offline_error">下载失败，可重试</string>
+    <string name="offline_hint">下载后地图不再消耗流量，只保留马鞍山。</string>
+    <string name="offline_loading">正在读取城市列表…</string>
+    <string name="offline_not_found">没找到马鞍山的离线包，请检查网络</string>
+
+    <!-- 工参搜索 -->
+    <string name="search_hint">搜小区名 / CGI</string>
+    <string name="search_clear">清除</string>
+    <string name="search_no_result">没有匹配的小区</string>
+    <string name="search_result_count">%1$d 个结果</string>
+    <string name="search_need_gongcan">请先导入工参</string>
+
+    <!-- 卡片排序 -->
+    <string name="card_order_entry">排序</string>
+    <string name="card_order_title">卡片排序</string>
+    <string name="card_order_hint">拖右边的 ≡ 或点箭头调整顺序，越靠上显示在越前面。没有数据的卡片不会显示。</string>
+    <string name="card_order_move_up">上移</string>
+    <string name="card_order_move_down">下移</string>
+    <string name="card_order_reset">恢复默认</string>
+    <string name="card_order_done">完成</string>
+
+    <!-- 站点导航 -->
+    <string name="site_navigate">导航到此</string>
+    <string name="site_dialog_title">基站信息</string>
+    <string name="site_info_site">基站</string>
+    <string name="site_info_cell">小区</string>
+    <string name="site_info_carrier">运营商</string>
+    <string name="site_info_type">类型</string>
+    <string name="site_info_cgi">CGI</string>
+    <string name="site_info_azimuth">方位角</string>
+    <string name="navigate_no_amap">未安装高德地图，请先安装</string>
+
+    <!-- 扇区开关 -->
+    <string name="map_sector_on">扇区</string>
+    <string name="map_sector_off">扇区</string>
+</resources>

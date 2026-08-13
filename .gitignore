@@ -1,0 +1,29 @@
+*.iml
+.gradle
+README_工参分类.md
+开发需求.md
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+
+# 工参文件：含基站位置等敏感网络信息，不公开
+*工参*.txt
+tools/
+*.py
+
+# APK 产物
+app/build/
+
+# Claude Code 的本地缓存
+.claude/
