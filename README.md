@@ -29,11 +29,14 @@
 
 ## 截图
 <p align="center">
-  <img src="https://github.com/JefferyCheng97/CellularMonitor/blob/main/img/demo1.jpg" width="300">
-  <img src="https://github.com/JefferyCheng97/CellularMonitor/blob/main/img/demo2.jpg" width="300">
+  <img src="https://github.com/JefferyCheng97/CellularMonitor/blob/main/img/demo1.jpg" width="250">
+  <img src="https://github.com/JefferyCheng97/CellularMonitor/blob/main/img/demo2.jpg" width="250">
 </p>
 
-
+<p align="center">
+  <img src="https://github.com/JefferyCheng97/CellularMonitor/blob/main/img/demo3.jpg" width="250">
+  <img src="https://github.com/JefferyCheng97/CellularMonitor/blob/main/img/demo4.jpg" width="250">
+</p>
 
 ## 编译
 
