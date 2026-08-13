@@ -29,7 +29,13 @@
 
 ## 截图
 
-（放几张跑起来的截图，展示主页信号卡、地图基站扇区、导航跳转等——先占位）
+![样例图1](https://github.com/JefferyCheng97/CellularMonitor/blob/main/img/demo1.jpg)
+
+![样例图2](https://github.com/JefferyCheng97/CellularMonitor/blob/main/img/demo2.jpg)
+
+![样例图3](https://github.com/JefferyCheng97/CellularMonitor/blob/main/img/demo3.jpg)
+
+![样例图4](https://github.com/JefferyCheng97/CellularMonitor/blob/main/img/demo4.jpg)
 
 ## 编译
 
@@ -43,7 +49,7 @@
 
 1. **克隆代码**
    ```bash
-   git clone https://github.com/你的用户名/CellularMonitor.git
+   git clone https://github.com/JefferyCheng97/CellularMonitor.git
    cd CellularMonitor
    ```
 
@@ -87,7 +93,7 @@
    产物在 `app/build/outputs/apk/release/app-release.apk`，大约 58 MB（大部分是高德 SDK 的原生库）。
 
    > release 构建**使用 debug keystore 签名**（`app/build.gradle.kts` 里 `signingConfig = signingConfigs.getByName("debug")`），方便个人测试和 apk 直接分发。上架应用市场请改成正式 keystore。
-
+    
 ## 权限
 
 首次启动会向用户请求：
@@ -137,7 +143,7 @@ App **不上传任何本机数据**：
 
 ## License
 
-MIT（或你想用的其他 License；如果不确定就写 `TBD`）
+MIT
 
 ## 致谢
 
