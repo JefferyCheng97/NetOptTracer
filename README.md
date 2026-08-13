@@ -28,20 +28,14 @@
 - **工参导入**：直接在 App 里选 TXT，不用改代码；支持 UTF-8 / GBK；支持中国移动、中国电信
 
 ## 截图
-
-![样例图1](https://github.com/JefferyCheng97/CellularMonitor/blob/main/img/demo1.jpg)
-
-![样例图2](https://github.com/JefferyCheng97/CellularMonitor/blob/main/img/demo2.jpg)
-
-![样例图3](https://github.com/JefferyCheng97/CellularMonitor/blob/main/img/demo3.jpg)
-
-![样例图4](https://github.com/JefferyCheng97/CellularMonitor/blob/main/img/demo4.jpg)
+<p align="center">
+  <img src="https://github.com/JefferyCheng97/CellularMonitor/blob/main/img/demo1.jpg" width="300">
+  <img src="https://github.com/JefferyCheng97/CellularMonitor/blob/main/img/demo2.jpg" width="300">
+</p>
 
 <p align="center">
-  <img src="https://github.com/JefferyCheng97/CellularMonitor/blob/main/img/demo1.jpg" width="220">
-  <img src="https://github.com/JefferyCheng97/CellularMonitor/blob/main/img/demo2.jpg" width="220">
-  <img src="https://github.com/JefferyCheng97/CellularMonitor/blob/main/img/demo3.jpg" width="220">
-  <img src="https://github.com/JefferyCheng97/CellularMonitor/blob/main/img/demo4.jpg" width="220">
+  <img src="https://github.com/JefferyCheng97/CellularMonitor/blob/main/img/demo3.jpg" width="300">
+  <img src="https://github.com/JefferyCheng97/CellularMonitor/blob/main/img/demo4.jpg" width="300">
 </p>
 
 
