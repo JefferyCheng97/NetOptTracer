@@ -141,7 +141,9 @@ App **不上传任何本机数据**：
 
 ## License
 
-MIT
+Apache License 2.0
+
+详见 [LICENSE](LICENSE) 文件。
 
 ## 致谢
 
