@@ -25,8 +25,11 @@ internal class SlotMonitor(
     private val telephonyManager: TelephonyManager,
     private val executor: Executor,
     private val onUpdate: () -> Unit,
-    /** 工参分类器，用来反查邻区的小区号和小区名。 */
-    private val classifier: CellTypeClassifier,
+    /**
+     * 工参分类器的**取值器**——用 lambda 而不是直接传实例，
+     * 这样 CellularRepository 重新加载工参后 SlotMonitor 能拿到最新的。
+     */
+    private val classifierProvider: () -> CellTypeClassifier,
 ) {
 
     private val state = AtomicReference(SlotSnapshot(sim = sim))
@@ -217,35 +220,15 @@ internal class SlotMonitor(
         val neighbors = cellInfo
             .filterNot { it.isRegistered }
             .mapNotNull { CellMapper.mapNeighbor(it) }
-            // 反查工参：用 (PCI, 频点) 填充小区号和小区名
+            // 反查工参：用 (PCI, 频点) 找所有候选小区
             .map { neighbor ->
-                val (cellId, cellName) = when (neighbor.type) {
-                    CellType.LTE -> {
-                        val pci = neighbor.pci
-                        val earfcn = neighbor.arfcn
-                        if (pci != null && earfcn != null) {
-                            val result = classifier.lookupNeighborLte(pci, earfcn, plmn)
-                            android.util.Log.d("SlotMonitor", "LTE邻区反查: PCI=$pci EARFCN=$earfcn PLMN=$plmn → ${if (result != null) "找到: ${result.first}-${result.second}" else "未找到"}")
-                            result
-                        } else {
-                            android.util.Log.d("SlotMonitor", "LTE邻区: PCI或频点缺失 pci=$pci earfcn=$earfcn")
-                            null
-                        }
-                    }
-                    CellType.NR -> {
-                        val pci = neighbor.pci
-                        val nrarfcn = neighbor.arfcn
-                        if (pci != null && nrarfcn != null) {
-                            val result = classifier.lookupNeighborNr(pci, nrarfcn, plmn)
-                            android.util.Log.d("SlotMonitor", "NR邻区反查: PCI=$pci NR-ARFCN=$nrarfcn PLMN=$plmn → ${if (result != null) "找到: ${result.first}-${result.second}" else "未找到"}")
-                            result
-                        } else {
-                            android.util.Log.d("SlotMonitor", "NR邻区: PCI或频点缺失 pci=$pci nrarfcn=$nrarfcn")
-                            null
-                        }
-                    }
-                } ?: (null to null)
-                neighbor.copy(cellId = cellId, cellName = cellName)
+                val pci = neighbor.pci
+                val arfcn = neighbor.arfcn
+                val candidates = if (pci != null && arfcn != null) {
+                    classifierProvider().lookupNeighbors(pci, arfcn, plmn)
+                } else emptyList()
+                android.util.Log.d("SlotMonitor", "邻区反查: ${neighbor.type} PCI=$pci 频点=$arfcn PLMN=$plmn → ${candidates.size} 候选")
+                neighbor.copy(candidates = candidates)
             }
             // 邻区可能很多，按 RSRP 由强到弱排，读不到强度的排最后。
             .sortedByDescending { it.rsrp ?: Int.MIN_VALUE }

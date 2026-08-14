@@ -59,6 +59,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -85,6 +86,7 @@ import com.jeffery.cellularmonitor.data.CellIdFormatter
 import com.jeffery.cellularmonitor.data.CellType
 import com.jeffery.cellularmonitor.data.LocationInfo
 import com.jeffery.cellularmonitor.data.LteMetrics
+import com.jeffery.cellularmonitor.data.NeighborCandidate
 import com.jeffery.cellularmonitor.data.NeighborCell
 import com.jeffery.cellularmonitor.data.NetworkMode
 import com.jeffery.cellularmonitor.data.NrMetrics
@@ -1256,15 +1258,23 @@ private fun NeighborsCard(neighbors: List<NeighborCell>) {
 
 @Composable
 private fun NeighborRow(cell: NeighborCell) {
+    // 只有有候选时才可展开，没候选时点击也没意义
+    val expandable = cell.candidates.isNotEmpty()
+    var expanded by rememberSaveable(cell.pci, cell.arfcn) { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .then(
+                if (expandable) Modifier.clickable { expanded = !expanded }
+                else Modifier
+            )
             .padding(vertical = 4.dp),
     ) {
-        // 第一行：PCI · 短格式小区号 · 小区名
+        // 折叠头：LTE/NR · PCI · RSRP · 频段 · [候选数量] · 展开箭头
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
                 when (cell.type) {
@@ -1274,48 +1284,88 @@ private fun NeighborRow(cell: NeighborCell) {
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.Bold,
             )
+            Spacer(Modifier.width(8.dp))
             Text(
                 "PCI ${cell.pci ?: "–"}",
                 style = MaterialTheme.typography.bodySmall,
                 fontFamily = FontFamily.Monospace,
             )
-            // 短格式小区号：1556804-503（gNB-ID-小区号）或 12345-78（eNB-ID-小区号）
-            cell.cellId?.let { cellId ->
-                Text(
-                    " · ${formatShortCellId(cell.type, cellId)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
-                )
-            }
-            // 小区名
-            cell.cellName?.let { name ->
-                Text(
-                    " · $name",
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.weight(1f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-
-        // 第二行：RSRP · 频段
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
+            Spacer(Modifier.width(8.dp))
             Text(
-                "RSRP ${cell.rsrp ?: "–"} dBm",
+                "${cell.rsrp ?: "–"} dBm",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             cell.band?.let {
+                Spacer(Modifier.width(8.dp))
                 Text(
-                    " · $it",
+                    it,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            Spacer(Modifier.weight(1f))
+            if (expandable) {
+                // 候选数量提示：>1 时给一个"可能有 N 个候选"的暗示
+                Text(
+                    if (cell.candidates.size == 1) "1 匹配" else "${cell.candidates.size} 候选",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    if (expanded) "▲" else "▼",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+
+        // 展开区：候选小区列表
+        if (expandable && expanded) {
+            Spacer(Modifier.height(6.dp))
+            cell.candidates.forEachIndexed { index, candidate ->
+                NeighborCandidateRow(cell.type, candidate)
+                if (index < cell.candidates.lastIndex) {
+                    Spacer(Modifier.height(4.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NeighborCandidateRow(type: CellType, candidate: NeighborCandidate) {
+    val context = LocalContext.current
+    val shortId = formatShortCellId(type, candidate.cellId)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { copyToClipboard(context, "小区号", shortId) }
+            .padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            "•",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.width(6.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                candidate.cellName,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                "$shortId · ${candidate.siteName}",
+                style = MaterialTheme.typography.labelSmall,
+                fontFamily = FontFamily.Monospace,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }

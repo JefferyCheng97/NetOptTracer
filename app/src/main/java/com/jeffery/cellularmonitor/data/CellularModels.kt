@@ -138,13 +138,22 @@ data class NeighborCell(
     val pci: Int? = null,
     /** LTE 是 RSRP，NR 是 SS-RSRP，单位都是 dBm。 */
     val rsrp: Int? = null,
-    /** LTE 是 EARFCN，NR 是 NR-ARFCN。 */
+    /** LTE 是 EARFCN，NR 是 NR-ARFCN（实际读到的是 SSB 频点）。 */
     val arfcn: Int? = null,
     val band: String? = null,
-    /** 小区号（从工参反查到的 ECI/NCI），查不到为 null。 */
-    val cellId: Long? = null,
-    /** 小区名（从工参反查），查不到为 null。 */
-    val cellName: String? = null,
+    /**
+     * 从工参反查到的候选小区列表。
+     * 光靠 (PCI, 频点) 可能匹配多个小区（PCI 复用），全部列出来让用户判断。
+     * 空列表表示工参里没匹配到，或者工参没导入。
+     */
+    val candidates: List<NeighborCandidate> = emptyList(),
+)
+
+/** 邻区候选：一个 (PCI, 频点) 组合可能匹配多个工参小区。 */
+data class NeighborCandidate(
+    val cellId: Long,
+    val cellName: String,
+    val siteName: String,
 )
 
 enum class CellType { LTE, NR }

@@ -24,8 +24,10 @@ object GongcanParser {
     private const val COL_CELL_NAME = "小区名"
 
     // 邻区反查用：PCI + 频点 → 小区号；可选（没这两列就不能反查邻区）
+    // 4G 用下行频点（EARFCN），5G 用 SSB 频点（跟手机 API 返回的一致）
     private const val COL_PCI = "PCI"
     private const val COL_ARFCN = "下行频点"
+    private const val COL_SSB = "SSB频点"
 
     // 经纬度是可选列——地图上打点会用到，但对判断覆盖类型不是必要的，
     // 缺列时不报错，只是不能在地图上显示位置
@@ -85,8 +87,10 @@ object GongcanParser {
         val azimuths: List<Int> = emptyList(),
         /** PCI，邻区反查用。工参没这列时为 null。 */
         val pci: Int? = null,
-        /** 下行频点（LTE EARFCN / NR NR-ARFCN），邻区反查用。工参没这列时为 null。 */
+        /** 下行频点（4G EARFCN），4G 邻区反查用。工参没这列时为 null。 */
         val arfcn: Int? = null,
+        /** SSB 频点（5G 用），5G 邻区反查用。4G 行这里是 null。 */
+        val ssbArfcn: Int? = null,
     )
 
     /** 表头缺列、文件为空这类问题，用异常带出可读的原因。 */
@@ -118,7 +122,8 @@ object GongcanParser {
         val iAzimuth = header.indexOf(COL_AZIMUTH)
         val iPci = header.indexOf(COL_PCI)
         val iArfcn = header.indexOf(COL_ARFCN)
-        val maxIndex = maxOf(iCell, iType, iCgi, iSite, iCellName, iLon, iLat, iAzimuth, iPci, iArfcn)
+        val iSsb = header.indexOf(COL_SSB)
+        val maxIndex = maxOf(iCell, iType, iCgi, iSite, iCellName, iLon, iLat, iAzimuth, iPci, iArfcn, iSsb)
 
         val cellsByCarrier = HashMap<Carrier, HashMap<Long, CellRecord>>()
         val typeCounts = HashMap<String, Int>()
@@ -175,8 +180,11 @@ object GongcanParser {
             val lat = if (iLat >= 0) f.getOrNull(iLat)?.trim()?.toDoubleOrNull()?.takeIf { it in 0.5..56.0 } else null
 
             // PCI 和频点：邻区反查用；解析不出来就置 null
-            val pci = if (iPci >= 0) f.getOrNull(iPci)?.trim()?.toIntOrNull()?.takeIf { it in 0..503 } else null
+            // 注意 PCI 上限：LTE 是 503，NR 是 1007，这里取 NR 上限，两者共用
+            val pci = if (iPci >= 0) f.getOrNull(iPci)?.trim()?.toIntOrNull()?.takeIf { it in 0..1007 } else null
             val arfcn = if (iArfcn >= 0) f.getOrNull(iArfcn)?.trim()?.toIntOrNull()?.takeIf { it > 0 } else null
+            // SSB 频点：只有 5G 有，4G 行是 "-" 占位符，toIntOrNull 会返回 null
+            val ssbArfcn = if (iSsb >= 0) f.getOrNull(iSsb)?.trim()?.toIntOrNull()?.takeIf { it > 0 } else null
 
             bucket[cell] = CellRecord(
                 type = type,
@@ -190,6 +198,7 @@ object GongcanParser {
                 azimuths = if (azimuth != null) listOf(azimuth) else emptyList(),
                 pci = pci,
                 arfcn = arfcn,
+                ssbArfcn = ssbArfcn,
             )
             typeCounts[type] = (typeCounts[type] ?: 0) + 1
         }

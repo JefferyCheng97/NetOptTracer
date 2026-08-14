@@ -25,22 +25,26 @@ class CellTypeClassifier private constructor(
     private val byCarrier: Map<GongcanParser.Carrier, Map<Long, GongcanParser.CellRecord>>,
 ) {
     /**
-     * 邻区反查索引：(PCI, 频点) → 小区号。
-     * 按运营商分表——PCI 可能复用，但同一运营商的 (PCI, 频点) 组合理论上唯一。
-     * 工参如果没 PCI/频点列，这个索引就是空的，邻区反查返回 null。
+     * 邻区反查索引：(PCI, 频点) → 候选小区号列表。
+     * 4G 用 EARFCN，5G 用 SSB 频点（手机 API 返回的 NR-ARFCN 实际就是 SSB 频点）。
+     *
+     * 同一 (PCI, 频点) 可能对应多个小区（PCI 复用），全部列出来交给用户判断，
+     * 而不是随便选一个（可能错）。
      */
-    private val pciIndex: Map<GongcanParser.Carrier, Map<Pair<Int, Int>, Long>> =
+    private val pciIndex: Map<GongcanParser.Carrier, Map<Pair<Int, Int>, List<Long>>> =
         byCarrier.mapValues { (carrier, cells) ->
-            buildMap {
-                for ((cellId, record) in cells) {
-                    val pci = record.pci ?: continue
-                    val arfcn = record.arfcn ?: continue
-                    // PCI 冲突时后来的覆盖前面的——实际工参应该不会冲突，冲突就是工参错了
-                    put(Pair(pci, arfcn), cellId)
-                }
-            }.also { index ->
-                android.util.Log.d("CellTypeClassifier", "PCI索引: $carrier → ${index.size} 条")
+            val index = HashMap<Pair<Int, Int>, MutableList<Long>>()
+            var ssbCount = 0
+            var arfcnCount = 0
+            for ((cellId, record) in cells) {
+                val pci = record.pci ?: continue
+                // 4G 用 EARFCN，5G 用 SSB 频点：优先取 SSB 频点，取不到再用 EARFCN
+                val freq = record.ssbArfcn ?: record.arfcn ?: continue
+                if (record.ssbArfcn != null) ssbCount++ else arfcnCount++
+                index.getOrPut(Pair(pci, freq)) { mutableListOf() }.add(cellId)
             }
+            android.util.Log.d("CellTypeClassifier", "PCI索引: $carrier → ${index.size} 个key，${index.values.sumOf { it.size }} 条候选（SSB=$ssbCount, EARFCN=$arfcnCount）")
+            index
         }
 
     /** 表里的小区总数（各家相加），0 表示没有可用工参。 */
@@ -59,24 +63,59 @@ class CellTypeClassifier private constructor(
     fun detailNr(nci: Long, plmn: String?): CellDetail? = record(nci, plmn)?.detail
 
     /**
-     * 邻区反查：4G，用 (PCI, EARFCN) 查小区号和小区名。
-     * 查不到（工参没 PCI/频点列、或这个 (PCI, EARFCN) 组合不在工参里）返回 null。
+     * 邻区反查：用 (PCI, 频点) 查所有匹配的候选小区。
+     *
+     * 4G 频点是 EARFCN，5G 频点是 SSB 频点（手机 API 返回的 NR-ARFCN 实际就是 SSB 频点）。
+     * 同一 (PCI, 频点) 可能对应多个小区（PCI 复用），全部返回给 UI 让用户判断。
+     *
+     * **跨运营商查询**：邻区可能是别家运营商的（比如联通卡读到移动邻区），
+     * 先查 PLMN 对应运营商，查不到就全局查所有工参表。
      */
-    fun lookupNeighborLte(pci: Int, earfcn: Int, plmn: String?): Pair<Long, String>? {
-        val carrier = plmnToCarrier(plmn) ?: return null
-        val cellId = pciIndex[carrier]?.get(Pair(pci, earfcn)) ?: return null
-        val cellName = byCarrier[carrier]?.get(cellId)?.detail?.cellName ?: return null
-        return Pair(cellId, cellName)
-    }
+    fun lookupNeighbors(pci: Int, arfcn: Int, plmn: String?): List<NeighborCandidate> {
+        val key = Pair(pci, arfcn)
+        android.util.Log.d("CellTypeClassifier", "查询邻区: key=$key PLMN=$plmn")
 
-    /**
-     * 邻区反查：5G，用 (PCI, NR-ARFCN) 查小区号和小区名。
-     */
-    fun lookupNeighborNr(pci: Int, nrArfcn: Int, plmn: String?): Pair<Long, String>? {
-        val carrier = plmnToCarrier(plmn) ?: return null
-        val cellId = pciIndex[carrier]?.get(Pair(pci, nrArfcn)) ?: return null
-        val cellName = byCarrier[carrier]?.get(cellId)?.detail?.cellName ?: return null
-        return Pair(cellId, cellName)
+        // 先查当前运营商（PLMN 对应的那家）
+        val carrier = plmnToCarrier(plmn)
+        if (carrier != null) {
+            val cellIds = pciIndex[carrier]?.get(key)
+            android.util.Log.d("CellTypeClassifier", "  查 $carrier 工参: ${cellIds?.size ?: 0} 条")
+            if (!cellIds.isNullOrEmpty()) {
+                val cells = byCarrier[carrier]!!
+                return cellIds.mapNotNull { cellId ->
+                    val record = cells[cellId] ?: return@mapNotNull null
+                    NeighborCandidate(
+                        cellId = cellId,
+                        cellName = record.detail.cellName,
+                        siteName = record.detail.siteName,
+                    )
+                }
+            }
+        } else {
+            android.util.Log.d("CellTypeClassifier", "  PLMN=$plmn 无法识别运营商")
+        }
+
+        // 查不到，全局查所有运营商的工参（联通卡读移动邻区这种情况）
+        android.util.Log.d("CellTypeClassifier", "  全局查所有工参...")
+        val allCandidates = mutableListOf<NeighborCandidate>()
+        for ((otherCarrier, index) in pciIndex) {
+            val cellIds = index[key]
+            android.util.Log.d("CellTypeClassifier", "    $otherCarrier: ${cellIds?.size ?: 0} 条")
+            if (cellIds == null) continue
+            val cells = byCarrier[otherCarrier] ?: continue
+            for (cellId in cellIds) {
+                val record = cells[cellId] ?: continue
+                allCandidates.add(
+                    NeighborCandidate(
+                        cellId = cellId,
+                        cellName = record.detail.cellName,
+                        siteName = record.detail.siteName,
+                    )
+                )
+            }
+        }
+        android.util.Log.d("CellTypeClassifier", "  全局查结果: ${allCandidates.size} 候选")
+        return allCandidates
     }
 
     private fun record(cellId: Long, plmn: String?): GongcanParser.CellRecord? {
@@ -117,6 +156,49 @@ class CellTypeClassifier private constructor(
                     )
                 )
             }
+        }
+    }
+
+    /**
+     * 按 (运营商, 基站名) 聚合的基站分组。地图 Marker 用这个——同一基站的多个小区
+     * 只打一个点，避免重叠，点击时一次显示所有小区。
+     *
+     * 坐标已从 WGS-84 转成 GCJ-02，跟 [sitesWithLocation] 一致。分组内不同小区如果
+     * 有微小的坐标偏差（同基站不同扇区录入时轻微不同），取第一个小区的坐标。
+     */
+    fun groupedSitesWithLocation(): List<SiteGroup> {
+        val groups = HashMap<Pair<GongcanParser.Carrier, String>, MutableList<Pair<Long, GongcanParser.CellRecord>>>()
+        for ((carrier, cells) in byCarrier) {
+            for ((cellId, record) in cells) {
+                if (record.detail.latitude == null || record.detail.longitude == null) continue
+                val key = Pair(carrier, record.detail.siteName)
+                groups.getOrPut(key) { mutableListOf() }.add(cellId to record)
+            }
+        }
+        return groups.map { (key, cellPairs) ->
+            val (carrier, siteName) = key
+            val (primaryCellId, primaryRecord) = cellPairs.first()
+            val (gcjLat, gcjLon) = CoordinateConverter.wgs84ToGcj02(
+                primaryRecord.detail.latitude!!,
+                primaryRecord.detail.longitude!!,
+            )
+            SiteGroup(
+                carrier = carrier,
+                siteName = siteName,
+                type = primaryRecord.type,
+                latitude = gcjLat,
+                longitude = gcjLon,
+                primaryCellId = primaryCellId,
+                cells = cellPairs.map { (cellId, record) ->
+                    GroupedCell(
+                        cellId = cellId,
+                        cellName = record.detail.cellName,
+                        type = record.type,
+                        cgi = record.cgi,
+                        azimuths = record.azimuths,
+                    )
+                },
+            )
         }
     }
 
@@ -264,4 +346,29 @@ data class SiteMarker(
      * 空列表表示工参没这个字段或没值，地图上不画扇区。
      */
     val azimuths: List<Int> = emptyList(),
+)
+
+/**
+ * 基站分组：同一 (运营商, 基站名) 下的所有小区聚合成一组。
+ * 地图上按基站打 Marker，一个基站一个点；点击弹窗一次显示这个基站下的所有小区。
+ */
+data class SiteGroup(
+    val carrier: GongcanParser.Carrier,
+    val siteName: String,
+    /** Marker 图标用的覆盖类型，取组内第一个小区的类型。 */
+    val type: String,
+    val latitude: Double,
+    val longitude: Double,
+    /** 组内第一个小区的 cellId，作为 Marker 的 key。 */
+    val primaryCellId: Long,
+    val cells: List<GroupedCell>,
+)
+
+/** 基站分组里的一个小区。 */
+data class GroupedCell(
+    val cellId: Long,
+    val cellName: String,
+    val type: String,
+    val cgi: String,
+    val azimuths: List<Int>,
 )

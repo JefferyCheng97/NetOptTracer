@@ -8,7 +8,7 @@ lifecycleRuntimeKtx = "2.6.1"
 activityCompose = "1.8.0"
 kotlin = "2.2.10"
 composeBom = "2026.02.01"
-# 高德 3D 地图 SDK。10.x 是当前主版本，自带离线管理。
+# 高德 3D 地图 SDK。10.x 是当前主版本，自带离线管理和高精度定位（GPS+网络+基站融合）
 amap3dMap = "10.0.600"
 
 [libraries]

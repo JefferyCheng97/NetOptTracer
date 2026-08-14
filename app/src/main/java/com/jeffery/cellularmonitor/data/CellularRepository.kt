@@ -205,7 +205,7 @@ class CellularRepository(private val context: Context) {
                     telephonyManager = perSubTelephony,
                     executor = executor,
                     onUpdate = { publish() },
-                    classifier = cellTypes,
+                    classifierProvider = { cellTypes },
                 )
                 monitors[sim.subscriptionId] = monitor
                 monitor.start()

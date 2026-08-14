@@ -1,6 +1,8 @@
 package com.jeffery.cellularmonitor.ui.map
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -19,8 +21,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -37,9 +42,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import com.amap.api.location.AMapLocation
+import com.amap.api.location.AMapLocationClient
+import com.amap.api.location.AMapLocationClientOption
+import com.amap.api.location.AMapLocationListener
 import com.amap.api.maps.AMap
 import com.amap.api.maps.CameraUpdateFactory
 import com.amap.api.maps.MapView
@@ -53,6 +63,8 @@ import com.amap.api.maps.model.MarkerOptions
 import com.amap.api.maps.model.MyLocationStyle
 import com.jeffery.cellularmonitor.R
 import com.jeffery.cellularmonitor.data.CellTypeClassifier
+import com.jeffery.cellularmonitor.data.GroupedCell
+import com.jeffery.cellularmonitor.data.SiteGroup
 import com.jeffery.cellularmonitor.data.SiteMarker
 import com.jeffery.cellularmonitor.ui.theme.CellularMonitorTheme
 import kotlinx.coroutines.Dispatchers
@@ -111,8 +123,8 @@ private fun MapScreen(onBack: () -> Unit) {
     var searchActive by remember { mutableStateOf(false) }
     var searchResults by remember { mutableStateOf<List<SiteMarker>>(emptyList()) }
 
-    // 站点详情 Dialog
-    var selectedSite by remember { mutableStateOf<SiteMarker?>(null) }
+    // 站点详情 Dialog：一个基站里可能有多个小区，弹出时一次显示全部
+    var selectedSite by remember { mutableStateOf<SiteGroup?>(null) }
 
     DisposableEffect(Unit) {
         if (!hasLocationPermission) {
@@ -129,7 +141,8 @@ private fun MapScreen(onBack: () -> Unit) {
         }
         // sitesWithLocation() 返回的坐标已经是 GCJ-02（工参原始是 WGS-84，函数内部做了转换）
         val sites = classifier.sitesWithLocation().toList()
-        mapViewHolder.setSites(sites)
+        val groups = classifier.groupedSitesWithLocation()
+        mapViewHolder.setSites(sites, groups)
     }
 
     // 把站点点击事件传给 Compose 状态
@@ -363,30 +376,56 @@ private fun SearchResultRow(site: SiteMarker, onClick: () -> Unit) {
 }
 
 /**
- * 站点详情 Dialog。显示基站信息，并提供「导航到此」按钮。
+ * 站点详情 Dialog。显示一个基站下的所有小区，并提供「导航到此」按钮。
+ * 每个小区一行，展示小区名 · 类型 · CGI · 方位角。
  */
 @Composable
 private fun SiteDetailDialog(
-    site: SiteMarker,
+    site: SiteGroup,
     onNavigate: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val context = LocalContext.current
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.site_dialog_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                InfoRow(stringResource(R.string.site_info_site), site.siteName)
-                InfoRow(stringResource(R.string.site_info_cell), site.cellName)
+                // 基站名可点击复制
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = stringResource(R.string.site_info_site),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = site.siteName,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { copyToClipboard(context, "基站名", site.siteName) },
+                        color = MaterialTheme.colorScheme.primary,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                    )
+                }
                 InfoRow(stringResource(R.string.site_info_carrier), site.carrier.displayName)
                 InfoRow(stringResource(R.string.site_info_type), site.type)
-                InfoRow(stringResource(R.string.site_info_cgi), site.cgi)
-                if (site.azimuths.isNotEmpty()) {
-                    // 多个方位角合并成 "0°, 120°, 240°" 显示
-                    InfoRow(
-                        stringResource(R.string.site_info_azimuth),
-                        site.azimuths.sorted().joinToString(", ") { "${it}°" },
-                    )
+                HorizontalDivider()
+                Text(
+                    "小区列表（${site.cells.size}）",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                // 小区多的时候能滚动查看，不至于把 Dialog 撑得超屏
+                Column(
+                    modifier = Modifier
+                        .heightIn(max = 320.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    site.cells.forEach { cell ->
+                        CellRow(cell, site.carrier)
+                    }
                 }
             }
         },
@@ -404,6 +443,54 @@ private fun SiteDetailDialog(
             }
         },
     )
+}
+
+@Composable
+private fun CellRow(cell: GroupedCell, carrier: com.jeffery.cellularmonitor.data.GongcanParser.Carrier) {
+    val context = LocalContext.current
+    val shortId = formatShortCellId(carrier, cell.cellId)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { copyToClipboard(context, "小区号", shortId) }
+            .padding(vertical = 4.dp),
+    ) {
+        Text(cell.cellName, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+        val azimuthStr = if (cell.azimuths.isNotEmpty()) {
+            cell.azimuths.sorted().joinToString(", ") { "${it}°" }
+        } else "-"
+        Text(
+            "$shortId · ${cell.type} · $azimuthStr",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/**
+ * 把完整小区号格式化成短格式：eNB-ID-小区号 或 gNB-ID-小区号。
+ * 根据运营商判断 4G 还是 5G（移动和电信工参混合 4G/5G，但每个 cellId 只属于一种）。
+ */
+private fun formatShortCellId(carrier: com.jeffery.cellularmonitor.data.GongcanParser.Carrier, cellId: Long): String {
+    // 用启发式规则：5G NCI 通常很大（36 bit），4G ECI 较小（28 bit）
+    // 但更准确的是看类型——不过这里只有 cellId，用位数判断
+    return if (cellId > 0xFFFFFFF) {
+        // 大概率是 5G NCI：前 24 bit 是 gNB-ID，后 12 bit 是小区号
+        val gnbId = (cellId shr 12).toInt()
+        val sectorId = (cellId and 0xFFF).toInt()
+        "$gnbId-$sectorId"
+    } else {
+        // 4G ECI：前 20 bit 是 eNB-ID，后 8 bit 是小区号
+        val enbId = (cellId shr 8).toInt()
+        val sectorId = (cellId and 0xFF).toInt()
+        "$enbId-$sectorId"
+    }
+}
+
+private fun copyToClipboard(context: android.content.Context, label: String, text: String) {
+    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+    clipboard?.setPrimaryClip(android.content.ClipData.newPlainText(label, text))
+    Toast.makeText(context, "已复制 $label", Toast.LENGTH_SHORT).show()
 }
 
 @Composable
@@ -433,7 +520,7 @@ private fun InfoRow(label: String, value: String) {
  *
  * 如果用户没装高德，catch ActivityNotFoundException 并 Toast 提示。
  */
-private fun navigateToSite(context: android.content.Context, site: SiteMarker) {
+private fun navigateToSite(context: android.content.Context, site: SiteGroup) {
     val uri = android.net.Uri.parse(
         "amapuri://route/plan/?dlat=${site.latitude}&dlon=${site.longitude}" +
             "&dname=${android.net.Uri.encode(site.siteName)}&dev=0&t=0"
@@ -459,14 +546,26 @@ private class MapViewHolder {
     private var view: MapView? = null
     private var aMap: AMap? = null
 
-    /** 工参里所有带坐标的基站；加载后不变。 */
+    /** 高德定位 SDK 客户端，比地图自带定位精度高 */
+    private var locationClient: AMapLocationClient? = null
+
+    /** 工参里所有带坐标的小区；加载后不变。搜索用（按小区名/CGI 匹配）。 */
     private var allSites: List<SiteMarker> = emptyList()
 
-    /** cellId → Marker，视口过滤时按 cellId 增删。 */
+    /**
+     * 按基站聚合的分组。地图打点用这个——一个基站一个 Marker，避免重叠。
+     * key 是 primaryCellId，视口过滤时按这个增删。
+     */
+    private var allGroups: List<SiteGroup> = emptyList()
+
+    /** 小区 cellId → 所属 group 的 primaryCellId。搜索定位时用（搜到小区反查它属于哪个 marker）。 */
+    private var cellToGroupPrimary: Map<Long, Long> = emptyMap()
+
+    /** primaryCellId → Marker，视口过滤时按这个增删。 */
     private val visibleMarkers = HashMap<Long, Marker>()
 
     /**
-     * cellId → 该基站的所有扇区 Polygon。同小区可能有多个扇区，所以是列表。
+     * primaryCellId → 该基站的所有扇区 Polygon。一个基站多个小区、多个方位角合并画出来。
      * 视口过滤和"扇区开关"共用这份状态：开关关掉时全部 remove，开关打开时按视口重画。
      */
     private val visibleSectors = HashMap<Long, List<com.amap.api.maps.model.Polygon>>()
@@ -478,13 +577,13 @@ private class MapViewHolder {
     private var didAutoCenter = false
 
     /**
-     * 搜索跳转的目标小区号。镜头飞过去、Marker 建好之后要弹它的信息窗，
+     * 搜索跳转的目标 group primaryCellId。镜头飞过去、Marker 建好之后要弹它的信息窗，
      * 但那一刻还在 animateCamera 途中，只能记下来等 onCameraChangeFinish 再处理。
      */
     private var pendingInfoWindowCellId: Long? = null
 
-    /** Marker 点击回调，由 Compose 状态设置。 */
-    var onSiteClick: ((SiteMarker) -> Unit)? = null
+    /** Marker 点击回调，由 Compose 状态设置。传出整个基站分组（含所有小区）。 */
+    var onSiteClick: ((SiteGroup) -> Unit)? = null
 
     /**
      * 最新一次定位缓存。用于「回到我的位置」——不能依赖 [AMap.getMyLocation]，
@@ -502,45 +601,66 @@ private class MapViewHolder {
     private val refreshHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private val refreshRunnable = Runnable { refreshVisibleMarkers() }
 
+    /** 定位回调：更新地图上的蓝点，缓存位置，首次自动居中 */
+    private val locationListener = AMapLocationListener { location ->
+        if (location == null) return@AMapLocationListener
+        // 定位失败检查
+        if (location.errorCode != 0) {
+            android.util.Log.w("MapViewHolder", "定位失败: ${location.errorCode} ${location.errorInfo}")
+            return@AMapLocationListener
+        }
+        val lat = location.latitude
+        val lon = location.longitude
+        if (lat == 0.0 && lon == 0.0) return@AMapLocationListener
+
+        val newPos = LatLng(lat, lon)
+        // 缓存最新有效位置（回到我的位置按钮用）
+        lastKnownLocation = newPos
+
+        // 首次自动居中
+        if (!didAutoCenter) {
+            aMap?.animateCamera(CameraUpdateFactory.newLatLngZoom(newPos, 17f))
+            didAutoCenter = true
+        }
+    }
+
     fun attach(view: MapView) {
         this.view = view
         val map = view.map
         aMap = map
 
-        // 导航样式：箭头跟随手机朝向旋转，但地图不自动居中
+        // 配置高德定位客户端（地图 SDK 内置，高精度模式：GPS + 网络 + 基站融合）
+        locationClient = AMapLocationClient(view.context).apply {
+            setLocationOption(AMapLocationClientOption().apply {
+                // 高精度定位模式：GPS + 网络 + 基站融合，精度最高（1-5 米）
+                locationMode = AMapLocationClientOption.AMapLocationMode.Hight_Accuracy
+                // 持续定位，每次回调间隔 2 秒
+                interval = 2000
+                // 单次定位超时 20 秒（首次冷启动 GPS 锁星慢，给足时间）
+                httpTimeOut = 20000
+                // 不需要地址信息，只要坐标
+                isNeedAddress = false
+                // 允许使用缓存定位（快速返回上次位置，然后更新到最新）
+                isLocationCacheEnable = true
+                // 关闭模拟位置检测（开发时用模拟器/假位置测试会被拦截）
+                isMockEnable = true
+                // 传感器开关：开启后定位算法会融合加速度计/陀螺仪，提升精度和平滑度
+                isSensorEnable = true
+            })
+            setLocationListener(locationListener)
+        }
+
+        // 地图显示定位图层（蓝色箭头跟随定位 SDK 的位置和方向，但地图不自动居中）
         val style = MyLocationStyle()
-            // LOCATION_TYPE_LOCATION_ROTATE_NO_CENTER：
-            // - 箭头持续跟随位置移动
-            // - 箭头根据手机朝向（罗盘方位）旋转
-            // - 地图镜头不自动跟随，用户可以自由拖动
             .myLocationType(MyLocationStyle.LOCATION_TYPE_LOCATION_ROTATE_NO_CENTER)
-            .interval(1000)  // 1 秒一次，比默认 2 秒快，GPS 锁星更快（但更耗电）
-            // 不显示精度圈：把边框宽度设为 0，圈就没了
+            // 不显示精度圈
             .strokeWidth(0f)
-            .strokeColor(0x00_000000.toInt())   // 全透明
-            .radiusFillColor(0x00_000000.toInt()) // 全透明
+            .strokeColor(0x00_000000.toInt())
+            .radiusFillColor(0x00_000000.toInt())
         map.myLocationStyle = style
         map.isMyLocationEnabled = true
-        map.uiSettings.isMyLocationButtonEnabled = false  // 用自己的顶部按钮
-        map.uiSettings.isZoomControlsEnabled = false      // 用户可用双指缩放
-
-        // 定位回调：既做首次自动居中，也**缓存**最新位置给「回到我的位置」按钮用。
-        // 直接读 map.myLocation 不可靠——ROTATE_NO_CENTER 模式下经常返回 null 或 (0,0)，
-        // 哪怕地图上蓝箭头能看见也一样。
-        map.setOnMyLocationChangeListener { location ->
-            if (location == null) return@setOnMyLocationChangeListener
-            val lat = location.latitude
-            val lon = location.longitude
-            if (lat == 0.0 && lon == 0.0) return@setOnMyLocationChangeListener  // SDK 默认值，跳过
-            // 缓存最新有效位置
-            lastKnownLocation = LatLng(lat, lon)
-            // 首次自动居中
-            if (!didAutoCenter) {
-                map.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(lat, lon), 17f))
-                didAutoCenter = true
-                // 首次居中后地图会 fire onCameraChangeFinish，触发基站视口过滤
-            }
-        }
+        map.uiSettings.isMyLocationButtonEnabled = false
+        map.uiSettings.isZoomControlsEnabled = false
 
         // 视口变化后重画基站：拖动/缩放停下后刷一次；
         // 用 changeFinish 而不是 change，避免拖动过程中每一帧都在增删 Marker
@@ -560,18 +680,29 @@ private class MapViewHolder {
 
         // 点击 Marker 时触发回调，弹出站点详情 Dialog
         map.setOnMarkerClickListener { marker ->
-            val cellId = visibleMarkers.entries.find { it.value == marker }?.key
-            if (cellId != null) {
-                val site = allSites.find { it.cellId == cellId }
-                site?.let { onSiteClick?.invoke(it) }
+            val primaryCellId = visibleMarkers.entries.find { it.value == marker }?.key
+            if (primaryCellId != null) {
+                val group = allGroups.find { it.primaryCellId == primaryCellId }
+                group?.let { onSiteClick?.invoke(it) }
             }
             true  // 消费事件，不触发 onMapClick
         }
     }
 
-    /** 工参加载完毕后调用，喂进所有可能显示的基站；紧接着刷一次视口。 */
-    fun setSites(sites: List<SiteMarker>) {
+    /**
+     * 工参加载完毕后调用，喂进所有小区（搜索用）和按基站聚合后的分组（打点用）。
+     * 加载后立即刷一次视口。
+     */
+    fun setSites(sites: List<SiteMarker>, groups: List<SiteGroup>) {
         allSites = sites
+        allGroups = groups
+        cellToGroupPrimary = buildMap {
+            for (group in groups) {
+                for (cell in group.cells) {
+                    put(cell.cellId, group.primaryCellId)
+                }
+            }
+        }
         // 地图可能还没准备好 projection——但没关系，如果视口过滤时 aMap 为 null 就跳过；
         // 首次定位居中后的 onCameraChangeFinish 会再刷一次
         refreshVisibleMarkers()
@@ -580,22 +711,23 @@ private class MapViewHolder {
     /** 是否已经加载过基站数据（用于判断要不要触发重新加载）。 */
     fun hasSites(): Boolean = allSites.isNotEmpty()
 
-    /** 供搜索用的全量基站列表。 */
+    /** 供搜索用的全量小区列表。 */
     fun getAllSites(): List<SiteMarker> = allSites
 
     /**
-     * 飞到某个基站并弹出它的信息窗。
+     * 飞到某个小区所在的基站并弹出它的信息窗。
      *
-     * 搜索结果点进来时，目标点通常还不在视口里、Marker 也没建出来，所以要先移镜头，
-     * 等 onCameraChangeFinish 把 Marker 补出来后再 showInfoWindow——直接查
-     * visibleMarkers 会拿不到。
+     * 搜的可能是任何一个小区，但地图上只有它所属基站的 marker——用 cellToGroupPrimary
+     * 反查所属 group 的 primaryCellId，等 onCameraChangeFinish 补出 marker 后 show。
      */
     fun flyToSite(site: SiteMarker) {
         val map = aMap ?: return
-        pendingInfoWindowCellId = site.cellId
-        map.animateCamera(
-            CameraUpdateFactory.newLatLngZoom(LatLng(site.latitude, site.longitude), 17f)
-        )
+        val primary = cellToGroupPrimary[site.cellId] ?: site.cellId
+        val group = allGroups.find { it.primaryCellId == primary }
+        val target = group?.let { LatLng(it.latitude, it.longitude) }
+            ?: LatLng(site.latitude, site.longitude)
+        pendingInfoWindowCellId = primary
+        map.animateCamera(CameraUpdateFactory.newLatLngZoom(target, 17f))
     }
 
     /**
@@ -616,7 +748,7 @@ private class MapViewHolder {
      */
     private fun refreshVisibleMarkers() {
         val map = aMap ?: return
-        if (allSites.isEmpty()) return
+        if (allGroups.isEmpty()) return
 
         // 缩得太远（大范围看全国/全省）时几万个点会卡，直接清空
         val zoom = map.cameraPosition?.zoom ?: return
@@ -636,28 +768,28 @@ private class MapViewHolder {
         // 视野内 marker 数量上限：超过就在这一帧不再新增，避免视野宽时一次性建几千个卡死
         // 已经建出来的不动，用户再缩放/移动一下就会补齐
         var markersAddedThisFrame = 0
-        for (site in allSites) {
-            val ll = LatLng(site.latitude, site.longitude)
+        for (group in allGroups) {
+            val ll = LatLng(group.latitude, group.longitude)
             if (bounds.contains(ll)) {
-                shouldShow.add(site.cellId)
-                if (!visibleMarkers.containsKey(site.cellId)) {
+                shouldShow.add(group.primaryCellId)
+                if (!visibleMarkers.containsKey(group.primaryCellId)) {
                     if (visibleMarkers.size + markersAddedThisFrame >= MAX_VISIBLE_MARKERS) continue
                     val marker = map.addMarker(
                         MarkerOptions()
                             .position(ll)
-                            .title(site.siteName)
-                            .snippet("${site.cellName}\n${site.carrier.displayName} / ${site.type} / ${site.cellId}")
-                            .icon(iconFor(site.carrier, site.type))
+                            .title(group.siteName)
+                            .snippet("${group.cells.size} 个小区 / ${group.carrier.displayName} / ${group.type}")
+                            .icon(iconFor(group.carrier, group.type))
                             .anchor(0.5f, 0.5f)
                     )
-                    visibleMarkers[site.cellId] = marker
+                    visibleMarkers[group.primaryCellId] = marker
                     markersAddedThisFrame++
                 }
-                // 扇区独立管理：开关关或 zoom 不够时不画
-                if (shouldDrawSectors && site.azimuths.isNotEmpty()
-                    && !visibleSectors.containsKey(site.cellId)
+                // 扇区独立管理：开关关或 zoom 不够时不画。同基站多个小区的方位角一起画。
+                if (shouldDrawSectors && group.cells.any { it.azimuths.isNotEmpty() }
+                    && !visibleSectors.containsKey(group.primaryCellId)
                 ) {
-                    visibleSectors[site.cellId] = drawSectors(map, site)
+                    visibleSectors[group.primaryCellId] = drawSectorsForGroup(map, group)
                 }
             }
         }
@@ -696,21 +828,25 @@ private class MapViewHolder {
      * 方位角是 0° 正北顺时针，跟数学里的 0° 正东逆时针不一样，转换公式是：
      *   math_angle = 90° - azimuth
      */
-    private fun drawSectors(map: AMap, site: SiteMarker): List<com.amap.api.maps.model.Polygon> {
-        val result = ArrayList<com.amap.api.maps.model.Polygon>(site.azimuths.size)
-        val fillColor = sectorColor(site.carrier, site.type)
-        for (azimuth in site.azimuths) {
+    /**
+     * 画一个基站分组的所有扇区。基站下每个小区的每个方位角各画一片扇区，
+     * 颜色按基站的主类型统一（marker 图标也是这个颜色）。
+     */
+    private fun drawSectorsForGroup(map: AMap, group: SiteGroup): List<com.amap.api.maps.model.Polygon> {
+        val fillColor = sectorColor(group.carrier, group.type)
+        val allAzimuths = group.cells.flatMap { it.azimuths }.distinct()
+        val result = ArrayList<com.amap.api.maps.model.Polygon>(allAzimuths.size)
+        for (azimuth in allAzimuths) {
             val opts = com.amap.api.maps.model.PolygonOptions()
                 .fillColor(fillColor)
                 .strokeColor(fillColor or 0xFF_000000.toInt())  // 边界不透明，扇区形状更清晰
                 .strokeWidth(1f)
-            // 顶点：基站中心 + 扇形圆弧上的采样点
-            opts.add(LatLng(site.latitude, site.longitude))
+            opts.add(LatLng(group.latitude, group.longitude))
             val start = azimuth - SECTOR_ANGLE_DEG / 2.0
             val end = azimuth + SECTOR_ANGLE_DEG / 2.0
             for (i in 0..SECTOR_STEPS) {
                 val bearing = start + (end - start) * i / SECTOR_STEPS
-                val (lat, lon) = offsetLatLng(site.latitude, site.longitude, SECTOR_RADIUS_M, bearing)
+                val (lat, lon) = offsetLatLng(group.latitude, group.longitude, SECTOR_RADIUS_M, bearing)
                 opts.add(LatLng(lat, lon))
             }
             result.add(map.addPolygon(opts))
@@ -810,17 +946,25 @@ private class MapViewHolder {
 
     fun resume() {
         view?.onResume()
+        // 启动定位
+        locationClient?.startLocation()
         // 后台唤醒时重新启用定位组件，否则蓝点不刷新
         aMap?.isMyLocationEnabled = true
     }
 
     fun pause() {
         view?.onPause()
+        // 暂停定位，省电
+        locationClient?.stopLocation()
     }
 
     fun destroy() {
         // 未执行的节流刷新要清掉，否则 Activity 已销毁还在跑
         refreshHandler.removeCallbacks(refreshRunnable)
+        // 停止并销毁定位客户端
+        locationClient?.stopLocation()
+        locationClient?.onDestroy()
+        locationClient = null
         // Marker/Polygon 会随 MapView 一起释放，但显式清一下更保险
         visibleMarkers.values.forEach { it.remove() }
         visibleMarkers.clear()

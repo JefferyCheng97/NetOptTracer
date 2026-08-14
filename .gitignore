@@ -16,10 +16,10 @@ README_工参分类.md
 .cxx
 local.properties
 
-
 # 工参文件：含基站位置等敏感网络信息，不公开
-*工参*.txt
+工参/
 tools/
+*工参*.txt
 *.py
 
 # APK 产物
