@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">CellularMonitor</string>
+    <string name="app_name">网优寻迹</string>
 
     <!-- 引导态 -->
     <string name="guide_permission_title">需要权限</string>
